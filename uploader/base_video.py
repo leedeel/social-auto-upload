@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import inspect
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Awaitable, Callable, Mapping
+
+ProgressCallback = Callable[[str, Mapping[str, object]], Awaitable[None] | None]
 
 
 class BaseVideoUploader:
@@ -23,6 +27,21 @@ class BaseVideoUploader:
         ".bmp",
     }
     MIN_SCHEDULE_LEAD_TIME = timedelta(hours=2)
+
+    def __init__(self, *args, progress_callback: ProgressCallback | None = None, **kwargs) -> None:
+        # Default sink is a no-op. Platform-specific `__init__` overrides
+        # should forward `progress_callback` here so `_emit_progress`
+        # becomes a single point of fan-out for both CLI and FastAPI paths.
+        self.progress_callback = progress_callback
+
+    async def _emit_progress(self, event: str, payload: Mapping[str, object] | None = None) -> None:
+        callback = getattr(self, "progress_callback", None)
+        if not callback:
+            return
+
+        result = callback(event, dict(payload) if payload else {})
+        if inspect.isawaitable(result):
+            await result
 
     @classmethod
     def validate_video_file(cls, file_path: str | Path) -> Path:

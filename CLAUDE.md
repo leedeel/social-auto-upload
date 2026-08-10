@@ -221,3 +221,14 @@ Despite the filename, it is not a CLI. It is a near-verbatim copy of `sau_backen
 - Bilibili: do not commit `biliup` binaries; `runtime.py` downloads them.
 - When adding a CLI subcommand, also update `docs/CLI.md` and the corresponding `skills/<platform>-upload/references/cli-contract.md`.
 - README disclaimer: this project is for personal/learning automation only; respect each platform's ToS.
+
+## `sau_backend_v2/` and `sau_frontend_v2/` — modularity rules
+
+The new v2 stack (FastAPI shell + React/TypeScript front-end) is the active web story. It coexists with the Web-era `sau_backend.py` / `sau_frontend/`, which remain as reference only. The v2 code follows a stricter modularity contract:
+
+- **One feature, one folder.** Each business module in `sau_frontend_v2/src/features/<domain>/` is self-contained: `api.ts` (REST client) + `hooks.ts` (TanStack Query hooks) + `store.ts` (Zustand UI slice) + components + `types.ts`. Cross-feature imports go only through `shared/` (domain types) and `lib/` (framework-agnostic utilities). Deleting a feature folder must not break any other feature.
+- **Three layers, no skips.** `components/ui/` holds no-business-semantic primitives; `features/<domain>/` holds domain-bound components; `pages/` only composes features. Pages must not call REST APIs directly — they go through feature hooks.
+- **Server state vs UI state, strictly separated.** TanStack Query owns all data fetched from the server (accounts, materials, tasks, etc.) and is the only place those lists are cached. Zustand stores only ephemeral UI state (sidebar collapsed, dialog open, current theme). **Never cache server-fetched lists in Zustand.**
+- **Contract is shared.** Backend Pydantic schemas (`sau_backend_v2/models/`) and front-end Zod schemas (`sau_frontend_v2/src/shared/types.ts`) describe the same domain entities. Adding or renaming a field requires updating both sides in the same commit, or the front-end will fail parsing at runtime.
+- **Progress events are opt-in.** New hooks added to `uploader/*/main.py` (`progress_callback: Callable | None = None`) must default to `None` and short-circuit when unset. The CLI path (no FastAPI) must remain byte-identical in behavior to before the hook was added.
+- **Legacy v1 stays frozen.** Do not extend `sau_backend.py`, `sau_frontend/`, `myUtils/`, or `uploader/{xhs,baijiahao,tk}_uploader/` for new features — those directories are reference only and will be deleted once v2 fully replaces them.

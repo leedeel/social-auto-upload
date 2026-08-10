@@ -294,7 +294,9 @@ class XiaoHongShuBaseUploader(BaseVideoUploader):
         publish_strategy: str = XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
         debug: bool = DEBUG_MODE,
         headless: bool = LOCAL_CHROME_HEADLESS,
+        progress_callback=None,
     ):
+        super().__init__(progress_callback=progress_callback)
         self.publish_date = publish_date
         self.account_file = str(account_file)
         self.publish_strategy = publish_strategy
@@ -481,6 +483,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
         publish_strategy: str = XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
         debug: bool = DEBUG_MODE,
         headless: bool = LOCAL_CHROME_HEADLESS,
+        progress_callback=None,
     ):
         super().__init__(
             publish_date=publish_date,
@@ -488,6 +491,7 @@ class XiaoHongShuVideo(XiaoHongShuBaseUploader):
             publish_strategy=publish_strategy,
             debug=debug,
             headless=headless,
+            progress_callback=progress_callback,
         )
         self.title = title
         self.file_path = file_path
@@ -656,6 +660,7 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
         publish_strategy: str = XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
         debug: bool = DEBUG_MODE,
         headless: bool = LOCAL_CHROME_HEADLESS,
+        progress_callback=None,
     ):
         super().__init__(
             publish_date=publish_date,
@@ -663,6 +668,7 @@ class XiaoHongShuNote(XiaoHongShuBaseUploader):
             publish_strategy=publish_strategy,
             debug=debug,
             headless=headless,
+            progress_callback=progress_callback,
         )
         self.image_paths = image_paths
         self.note = note or ""

@@ -185,7 +185,9 @@ async def _wait_upload_complete(page: Page, max_polls: int = 360) -> bool:
 class YouTubeVideo(BaseVideoUploader):
     def __init__(self, title, file_path, tags, account_file, *,
                  description="", thumbnail_path=None, playlist=None,
-                 visibility="public", debug=DEBUG_MODE, headless=False):
+                 visibility="public", debug=DEBUG_MODE, headless=False,
+                 progress_callback=None):
+        super().__init__(progress_callback=progress_callback)
         self.title = title
         self.file_path = str(file_path)
         self.tags = tags or []

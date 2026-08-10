@@ -10,44 +10,65 @@ from typing import Iterable, Sequence
 
 from conf import BASE_DIR
 from uploader.bilibili_uploader.runtime import run_biliup_command
-from uploader.douyin_uploader.main import (
-    DOUYIN_PUBLISH_STRATEGY_IMMEDIATE,
-    DOUYIN_PUBLISH_STRATEGY_SCHEDULED,
-    DouYinNote,
-    DouYinVideo,
-    cookie_auth as douyin_cookie_auth,
-    douyin_setup,
-)
-from uploader.ks_uploader.main import (
-    KUAISHOU_PUBLISH_STRATEGY_IMMEDIATE,
-    KUAISHOU_PUBLISH_STRATEGY_SCHEDULED,
-    KSNote,
-    KSVideo,
-    cookie_auth as kuaishou_cookie_auth,
-    ks_setup,
-)
-from uploader.tencent_uploader.main import (
-    TENCENT_PUBLISH_STRATEGY_IMMEDIATE,
-    TENCENT_PUBLISH_STRATEGY_SCHEDULED,
-    TencentVideo,
-    cookie_auth as tencent_cookie_auth,
-    tencent_setup,
-)
-from uploader.xiaohongshu_uploader.main import (
-    XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE,
-    XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED,
-    XiaoHongShuNote,
-    XiaoHongShuVideo,
-    cookie_auth as xiaohongshu_cookie_auth,
-    xiaohongshu_setup,
-)
-from uploader.youtube_uploader.main import (
-    YouTubeVideo,
-    cookie_auth as youtube_cookie_auth,
-    youtube_setup,
-)
+
+# Platform-specific publish strategies. These are just strings; mirroring them
+# here keeps the top-level imports light (the uploader modules pull in
+# patchright, which we want to defer until the CLI / FastAPI actually drives
+# a publish).
+DOUYIN_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
+DOUYIN_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
+KUAISHOU_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
+KUAISHOU_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
+XIAOHONGSHU_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
+XIAOHONGSHU_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
+TENCENT_PUBLISH_STRATEGY_IMMEDIATE = "immediate"
+TENCENT_PUBLISH_STRATEGY_SCHEDULED = "scheduled"
 
 SCHEDULE_FORMAT = "%Y-%m-%d %H:%M"
+
+
+# Lazy platform imports. Each uploader pulls in `patchright`, which we want
+# to defer until the CLI / FastAPI actually drives a publish. The PEP 562
+# `__getattr__` makes names like `DouYinVideo` resolve on first access
+# without paying the import cost upfront.
+_LAZY_PLATFORM_ATTRS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "douyin": (
+        "uploader.douyin_uploader.main",
+        ("DouYinVideo", "DouYinNote", "douyin_setup", "douyin_cookie_auth"),
+    ),
+    "kuaishou": (
+        "uploader.ks_uploader.main",
+        ("KSVideo", "KSNote", "ks_setup", "kuaishou_cookie_auth"),
+    ),
+    "xiaohongshu": (
+        "uploader.xiaohongshu_uploader.main",
+        ("XiaoHongShuVideo", "XiaoHongShuNote", "xiaohongshu_setup", "xiaohongshu_cookie_auth"),
+    ),
+    "tencent": (
+        "uploader.tencent_uploader.main",
+        ("TencentVideo", "tencent_setup", "tencent_cookie_auth"),
+    ),
+    "youtube": (
+        "uploader.youtube_uploader.main",
+        ("YouTubeVideo", "youtube_setup", "youtube_cookie_auth"),
+    ),
+}
+_loaded_modules: dict[str, object] = {}
+
+
+def __getattr__(name: str):
+    for platform, (module_name, attrs) in _LAZY_PLATFORM_ATTRS.items():
+        if name in attrs:
+            module = _loaded_modules.get(platform)
+            if module is None:
+                import importlib
+
+                module = importlib.import_module(module_name)
+                _loaded_modules[platform] = module
+            value = getattr(module, name)
+            globals()[name] = value  # cache for next access
+            return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 @dataclass(slots=True)
@@ -308,7 +329,7 @@ async def check_youtube_account(account_name: str) -> bool:
     return await youtube_cookie_auth(str(account_file))
 
 
-async def upload_youtube_video(request: YouTubeVideoUploadRequest) -> Path:
+async def upload_youtube_video(request: YouTubeVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("youtube", request.account_name)
     is_ready = await youtube_setup(str(account_file), handle=False)
     if not is_ready:
@@ -327,12 +348,13 @@ async def upload_youtube_video(request: YouTubeVideoUploadRequest) -> Path:
         visibility=request.visibility,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.main()
     return account_file
 
 
-async def upload_video(request: DouyinVideoUploadRequest) -> Path:
+async def upload_video(request: DouyinVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("douyin", request.account_name)
     is_ready = await douyin_setup(str(account_file), handle=False)
     if not is_ready:
@@ -359,12 +381,13 @@ async def upload_video(request: DouyinVideoUploadRequest) -> Path:
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.douyin_upload_video()
     return account_file
 
 
-async def upload_note(request: DouyinNoteUploadRequest) -> Path:
+async def upload_note(request: DouyinNoteUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("douyin", request.account_name)
     is_ready = await douyin_setup(str(account_file), handle=False)
     if not is_ready:
@@ -383,12 +406,13 @@ async def upload_note(request: DouyinNoteUploadRequest) -> Path:
         debug=request.debug,
         headless=request.headless,
         bgm=request.bgm,
+        progress_callback=progress_callback,
     )
     await app.douyin_upload_note()
     return account_file
 
 
-async def upload_kuaishou_video(request: KuaishouVideoUploadRequest) -> Path:
+async def upload_kuaishou_video(request: KuaishouVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("kuaishou", request.account_name)
     is_ready = await ks_setup(str(account_file), handle=False)
     if not is_ready:
@@ -407,12 +431,13 @@ async def upload_kuaishou_video(request: KuaishouVideoUploadRequest) -> Path:
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.main()
     return account_file
 
 
-async def upload_kuaishou_note(request: KuaishouNoteUploadRequest) -> Path:
+async def upload_kuaishou_note(request: KuaishouNoteUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("kuaishou", request.account_name)
     is_ready = await ks_setup(str(account_file), handle=False)
     if not is_ready:
@@ -430,12 +455,13 @@ async def upload_kuaishou_note(request: KuaishouNoteUploadRequest) -> Path:
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.main()
     return account_file
 
 
-async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Path:
+async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
     if not is_ready:
@@ -454,12 +480,13 @@ async def upload_xiaohongshu_video(request: XiaohongshuVideoUploadRequest) -> Pa
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.main()
     return account_file
 
 
-async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path:
+async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("xiaohongshu", request.account_name)
     is_ready = await xiaohongshu_setup(str(account_file), handle=False)
     if not is_ready:
@@ -478,17 +505,21 @@ async def upload_xiaohongshu_note(request: XiaohongshuNoteUploadRequest) -> Path
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.main()
     return account_file
 
 
-async def upload_bilibili_video(request: BilibiliVideoUploadRequest) -> Path:
+async def upload_bilibili_video(request: BilibiliVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("bilibili", request.account_name)
     if not account_file.exists():
         raise RuntimeError(
             f"Bilibili account file is missing: {account_file}. Run `sau bilibili login --account {request.account_name}` first."
         )
+
+    if progress_callback is not None:
+        await _maybe_await(progress_callback("publish_started", {"platform": "bilibili", "account": request.account_name, "title": request.title}))
 
     arguments = [
         "-u",
@@ -510,12 +541,14 @@ async def upload_bilibili_video(request: BilibiliVideoUploadRequest) -> Path:
         arguments.extend(["--dtime", str(int(request.publish_date.timestamp()))])
 
     result = run_biliup_command(arguments)
+    if progress_callback is not None:
+        await _maybe_await(progress_callback("publish_completed" if result.returncode == 0 else "publish_failed", {"platform": "bilibili", "account": request.account_name, "returncode": result.returncode}))
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout or "").strip() or "Bilibili upload failed")
     return account_file
 
 
-async def upload_tencent_video(request: TencentVideoUploadRequest) -> Path:
+async def upload_tencent_video(request: TencentVideoUploadRequest, *, progress_callback=None) -> Path:
     account_file = resolve_account_file("tencent", request.account_name)
     is_ready = await tencent_setup(str(account_file), handle=False)
     if not is_ready:
@@ -544,9 +577,24 @@ async def upload_tencent_video(request: TencentVideoUploadRequest) -> Path:
         publish_strategy=request.publish_strategy,
         debug=request.debug,
         headless=request.headless,
+        progress_callback=progress_callback,
     )
     await app.tencent_upload_video()
     return account_file
+
+
+async def _maybe_await(value):
+    """Await the result if it is awaitable, otherwise return as-is.
+
+    Progress callbacks may be sync or async; this helper normalizes the call
+    so the CLI wrapper functions can `await _maybe_await(progress_callback(...))`
+    without branching on the return type.
+    """
+    if value is None:
+        return None
+    if hasattr(value, "__await__"):
+        return await value
+    return value
 
 
 def existing_file_path(value: str) -> Path:

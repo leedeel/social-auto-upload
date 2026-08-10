@@ -25,6 +25,12 @@ web = [
   "Flask[async]==3.1.1",
   "flask-cors==6.0.0",
 ]
+v2 = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "python-multipart>=0.0.20",
+]
 
 [tool.uv]
 package = true
@@ -34,7 +40,7 @@ py-modules = ["cli_main", "conf", "sau_cli"]
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["uploader*", "utils*", "myUtils*"]
+include = ["uploader*", "utils*", "myUtils*", "sau_backend_v2*"]
 
 [tool.setuptools.package-data]
 utils = ["stealth.min.js"]
